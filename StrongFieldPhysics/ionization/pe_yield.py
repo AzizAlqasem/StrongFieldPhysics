@@ -8,7 +8,7 @@ import time
 from StrongFieldPhysics.time_of_flight.tof_to_energy import t2E, t2E_fixed_bins
 from StrongFieldPhysics.time_of_flight.tof_to_momentum import t2P
 from StrongFieldPhysics.calculations.calculations import up, gamma, photon_energy, channel_closure
-from StrongFieldPhysics.parser.data_files import read_header
+from StrongFieldPhysics.parser.data_files import
 from StrongFieldPhysics.calculations.fourier import fft, filter_signal
 
 # 30 AZIZ
@@ -59,7 +59,7 @@ class PE_yield:
 
     def load_data(self, file_name=None, dir_path=None, num_of_bins=None):
         """Load data from file
-        num_of_bins: for TDC2228A#151ps, it should be 2038 (2048 - 10) 
+        num_of_bins: for TDC2228A#151ps, it should be 2038 (2048 - 10)
                     where 10 is dead bins that you can verify by looking at raw data!
         """
         if file_name:
@@ -103,7 +103,7 @@ class PE_yield:
             self.correct_tof()
         self.momentum, self.yeild_P = t2P(self.tof*1e-9, self.count, L=self.L, t0=0)
         return self.momentum, self.yeild_P
-    
+
     ### Fourier Transform ###
     def fourier_transform(self, x_type='energy', dt=None, dc_offset=0, auto_remove_dc_offset=True):
         """Fourier transform the signal"""
@@ -181,12 +181,12 @@ class PE_yield:
             ax.stem(x, y, label=label, markerfmt=' ', basefmt=' ')
         else:
             raise ValueError(f"Unknown plot_type: {plot_type}")
-        if 'phase' in plot_type:  
+        if 'phase' in plot_type:
             # plot phase
             ax2 = ax.twinx()
             ax2.plot(x, self.phase, label='phase', lw=lw, marker='o', linestyle='', color='k', alpha=0.5)
             ax2.set_ylabel('Phase [rad]', fontsize=10)
-            ax2.set_ylim([-np.pi, np.pi])  
+            ax2.set_ylim([-np.pi, np.pi])
 
         if xlim:
             ax.set_xlim(xlim)
@@ -333,6 +333,40 @@ class PE_yield:
         # save data
         np.savetxt(file_path, data, delimiter=",", header="\n".join(header_list))
 
+    ##### Export Data
+    def export_data(self, file_name=None, dir_path=None, data_type='energy', add_calibration_header=True, normalize=False, method='jacobian', E_max=None, dE=None):
+        """Export data to file"""
+        # prepare file name and directory
+        file_name = file_name if file_name else self.file_name.replace('.txt', f'_{data_type}.dat')
+        dir_path = dir_path if dir_path else os.path.join(self.dir_path, data_type+'_data')
+        file_path = os.path.join(dir_path, file_name)
+        os.makedirs(dir_path, exist_ok=True)
+        # load header
+        # Exisiting header
+        header_list = read_header(self.file_path)[:-1]
+        # calibration headers
+        if add_calibration_header:
+            header_list.append(f'# t0 [ns]: {self.t0}')
+            header_list.append(f'# L [m]: {self.L}')
+            header_list.append(f'# Intensity [TW/cm2]: {self.I}')
+            header_list.append(f'# Up [eV]: {self.Up}')
+            header_list.append(f'# Ip [eV]: {self.Ip}')
+            header_list.append(f'# Gamma: {self.gamma}')
+            header_list.append(f'# Channel Closure: {self.channel_closure}')
+            header_list.append(f'# Photon Energy [eV]: {self.photon_energy}')
+        # data
+        self.correct_tof() # make sure tof is corrected
+        if data_type == 'energy':
+            self.convert_tof_to_energy(normalize=normalize, method=method, E_max=E_max, dE=dE)
+            data = np.array([self.energy, self.yeild_E]).T
+        elif data_type == 'momentum':
+            data = np.array([self.momentum, self.yeild_P]).T
+        elif data_type == 'tof':
+            data = np.array([self.tof, self.count]).T
+        # save data
+        np.savetxt(file_path, data, delimiter=" ", fmt='%1.6e')
+
+
 
 
 class PE_yield_collection(PE_yield):
@@ -471,5 +505,11 @@ class PE_yield_collection(PE_yield):
         if save_dir is None:
             save_dir = self.dir_path
         fig.savefig(os.path.join(save_dir, save_path))
+
+    # Export Data
+    def export_data(self, file_name=None, dir_path=None, data_type='energy', add_calibration_header=True, normalize=False, method='jacobian', E_max=None, dE=None):
+        """Export data to file"""
+        for yield_ in self.yields:
+            yield_.export_data(file_name=file_name, dir_path=dir_path, data_type=data_type, add_calibration_header=add_calibration_header, normalize=normalize, method=method, E_max=E_max, dE=dE)
 
 
