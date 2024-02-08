@@ -8,7 +8,7 @@ import time
 from StrongFieldPhysics.time_of_flight.tof_to_energy import t2E, t2E_fixed_bins
 from StrongFieldPhysics.time_of_flight.tof_to_momentum import t2P
 from StrongFieldPhysics.calculations.calculations import up, gamma, photon_energy, channel_closure
-from StrongFieldPhysics.parser.data_files import
+from StrongFieldPhysics.parser.data_files import read_header, remove_empty_lines
 from StrongFieldPhysics.calculations.fourier import fft, filter_signal
 
 # 30 AZIZ
@@ -344,19 +344,24 @@ class PE_yield:
         # load header
         # Exisiting header
         header_list = read_header(self.file_path)[:-1]
+        header_list = remove_empty_lines(header_list, remove_hash=True)
         # calibration headers
         if add_calibration_header:
-            header_list.append(f'# t0 [ns]: {self.t0}')
-            header_list.append(f'# L [m]: {self.L}')
-            header_list.append(f'# Intensity [TW/cm2]: {self.I}')
-            header_list.append(f'# Up [eV]: {self.Up}')
-            header_list.append(f'# Ip [eV]: {self.Ip}')
-            header_list.append(f'# Gamma: {self.gamma}')
-            header_list.append(f'# Channel Closure: {self.channel_closure}')
-            header_list.append(f'# Photon Energy [eV]: {self.photon_energy}')
+            header_list.append(f' -------- Time of flight converted to {data_type} using {method} ---------')
+            header_list.append(f' Processed Date : {time.ctime()}')
+            header_list.append(f' t0 [ns]: {self.t0}')
+            header_list.append(f' L [m]: {self.L}')
+            header_list.append(f' Intensity [TW/cm2]: {self.I}')
+            header_list.append(f' Up [eV]: {self.Up}')
+            header_list.append(f' Ip [eV]: {self.Ip}')
+            header_list.append(f' Gamma: {self.gamma}')
+            header_list.append(f' Channel Closure: {self.channel_closure}')
+            header_list.append(f' Photon Energy [eV]: {self.photon_energy}')
+            header_list.append(f' -----------------')
         # data
         self.correct_tof() # make sure tof is corrected
         if data_type == 'energy':
+            header_list.append(f" Energy [eV], Yield [a.u.]")
             self.convert_tof_to_energy(normalize=normalize, method=method, E_max=E_max, dE=dE)
             data = np.array([self.energy, self.yeild_E]).T
         elif data_type == 'momentum':
@@ -364,7 +369,7 @@ class PE_yield:
         elif data_type == 'tof':
             data = np.array([self.tof, self.count]).T
         # save data
-        np.savetxt(file_path, data, delimiter=" ", fmt='%1.6e')
+        np.savetxt(file_path, data, fmt='%1.6e', delimiter="\t", header="\n".join(header_list))
 
 
 
@@ -507,9 +512,15 @@ class PE_yield_collection(PE_yield):
         fig.savefig(os.path.join(save_dir, save_path))
 
     # Export Data
-    def export_data(self, file_name=None, dir_path=None, data_type='energy', add_calibration_header=True, normalize=False, method='jacobian', E_max=None, dE=None):
+    def export_data(self, file_name=None, fn_extra=None, dir_path=None, data_type='energy', add_calibration_header=True, normalize=False, method='jacobian', E_max=None, dE=None):
         """Export data to file"""
-        for yield_ in self.yields:
-            yield_.export_data(file_name=file_name, dir_path=dir_path, data_type=data_type, add_calibration_header=add_calibration_header, normalize=normalize, method=method, E_max=E_max, dE=dE)
+        file_name_ed = file_name
+        for i, yield_ in enumerate(self.yields):
+            if fn_extra:
+                file_name_ed = file_name if file_name else yield_.file_name.replace('.txt', f'_{data_type}')
+                if fn_extra == 'I':
+                    fn_extra_ed = f"_I{round(self.I[i],2)}TW"
+                file_name_ed = file_name_ed+fn_extra_ed
+            yield_.export_data(file_name=file_name_ed, dir_path=dir_path, data_type=data_type, add_calibration_header=add_calibration_header, normalize=normalize, method=method, E_max=E_max, dE=dE)
 
 
