@@ -102,14 +102,58 @@ def plot_energy_levels(data_dict, species:str, WL,  max_labels=10, ):
     # filename = os.path.join(this_file_path, 'energy_level_data', f'energy_levels_{species}{z}.png')
     # plt.savefig(filename, dpi=300)
 
+def plot_energy_levels2(data_dict, species:str, WL, ip=None,  max_labels=10, ytick_minor_f=2):
+    energy = np.array(data_dict['Level (eV)'], dtype=float)
+    configuration = data_dict['Configuration']
+    if ip is None:
+        ip = energy[-1]
+    fig, ax = plt.subplots(figsize=(4, 7), tight_layout=True)
+    x = [1] * len(energy)
+    ax.scatter(x, energy, s=30000, marker="_", linewidth=1, color='black', alpha=1)
+    old_tx = ''
+    c = 0
+    for xi, yi, tx in zip(x, energy, configuration):
+        tx = tx.split('.')[-1]
+        if tx == old_tx or c>max_labels:
+            txt = ''
+        else:
+            # txt = tx.split('.')[-1]
+            txt=tx
+            # txt = tx[:2] + ' ' + tx[4:]
+        ax.annotate(txt, xy=(1.023*xi, yi), xytext=(7, 5), size=10,
+                    ha="center", va='top', textcoords="offset points", fontweight='bold')
+        old_tx = tx
+        c += 1
+    ax.set_xlim(0.98, 1.03)
+    ax.set_xticks([])
+    # ax.yaxis.set_minor_locator(mpl.ticker.MaxNLocator(50))
+    pe = 1.2398/(WL)
+    ax.yaxis.set_major_locator(MultipleLocator(pe))
+    ax.yaxis.set_minor_locator(MultipleLocator(pe/ytick_minor_f))
+    ax.grid(which='major', axis='y', linestyle='--', color='gray', alpha=0.5, lw=0.5)
+    ax.set_title(f'Energy levels of {species} | {WL}um', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Energy [eV]', fontsize=15, fontweight='bold')
+    # Label ground state
+    ax.annotate('Ground state', xy=(1, -0.1), xytext=(9, 1), size=11, ha="center", va='top', textcoords="offset points", fontweight='bold')
+    #ip = ip + pe
+    for dy in np.arange(0, ip, pe):
+        hl = 0.2
+        ax.arrow(x=1, y=0+dy, dx=0, dy=pe-hl, head_width=0.0015, head_length=hl, fc='b', ec='b', width=0.0004)
+    plt.show()
+    # save figure
+    # this_file_path = os.path.dirname(os.path.abspath(__file__))
+    # filename = os.path.join(this_file_path, 'energy_level_data', f'energy_levels_{species}{z}.png')
+    # plt.savefig(filename, dpi=300)
 
 
 
 
 ##### Test load and parse functions #####
-data = load_energy_levels('He', 0)
-data_dict = parse_energy_levels(data, 'He')
-plot_energy_levels(data_dict, 'He', 0.5)
+specie = 'He'
+data = load_energy_levels(specie, 0)
+data_dict = parse_energy_levels(data, specie)
+# plot_energy_levels2(data_dict, specie, 0.5)
+plot_energy_levels2(data_dict, specie, WL=0.4, ip=None,  max_labels=22, ytick_minor_f=2)
 # print(data_dict)
 
 ############### RUN THIS TO DOWNLOAD DATA ################
