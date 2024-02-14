@@ -4,8 +4,6 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-# interpolation
-
 
 
 # For 2Up knee

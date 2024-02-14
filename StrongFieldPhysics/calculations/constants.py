@@ -10,6 +10,7 @@ BOHR_RADIUS = 5.29177210903e-11 # Meter  # Bohr radius
 C = 299792458 # Speed of light in m/s
 BLANK_CONSTANT = 6.62608e-34 # J s  # Planck constant
 H_BAR = BLANK_CONSTANT / (2 * PI) # J s  # Reduced Planck constant
+EPS0 = 8.8541878128e-12 # F/m  # Vacuum permittivity
 
 # One Atomic units (in SI units)
 ATOMIC_MASS = MASS # atomic unit of mass
