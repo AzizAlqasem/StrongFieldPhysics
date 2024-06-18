@@ -21,7 +21,7 @@ import numpy as np
 
 
 # Fast Fourier Transform
-def fft(signal_amp, dt, dc_offset=0, auto_remove_dc_offset=False, calc_phase=False):
+def fft(signal_amp, dt, dc_offset=0, auto_remove_dc_offset=False, calc_phase=False, power_spectrum=False):
     """Fast Fourier Transform
     signal_amp: signal amplitude (y-axis)
     dt: time step (x-axis)
@@ -35,7 +35,11 @@ def fft(signal_amp, dt, dc_offset=0, auto_remove_dc_offset=False, calc_phase=Fal
     N2 = N//2
     freq = 1/(N*dt) * np.arange(N2)
     y = np.fft.fft(signal_amp)[:N2]
-    power_spectrum = y * np.conj(y) / N
+    if power_spectrum: # power spectrum as defined in physics
+        power_spectrum = np.real(y * np.conj(y) / N)
+    else: # magnitude of the signal
+        power_spectrum = np.real(np.abs(y))
+    # TODO: Change 'power_spectrum' to 'magnitude'
     if calc_phase:
         phase = np.angle(y)
         return freq, power_spectrum, phase
@@ -68,3 +72,24 @@ def filter_signal(signal_amp, dt, threshold=None, remove_high_freq_above=None, r
     y = y * ind
     # inverse FFT
     return np.fft.ifft(y)
+
+
+def correct_phase_arr(phase, tol=1E-7):
+    """Correct the phase to be between 0 and 2pi instead of
+    -pi to pi that you get from np.angle
+    Also consider small numerical errors (<1E-7) as zero.
+    """
+    phase = np.where(np.abs(phase) < tol, 0, phase)
+    phase = np.where(phase < 0, phase + 2*np.pi, phase)
+    return phase
+
+def correct_phase(phase, tol=1E-7):
+    """Correct the phase to be between 0 and 2pi instead of
+    -pi to pi that you get from np.angle
+    Also consider small numerical errors (<1E-7) as zero.
+    """
+    if np.abs(phase) < tol:
+        return 0
+    if phase < 0:
+        return phase + 2*np.pi
+    return phase

@@ -44,6 +44,23 @@ def channel_closure(up, ip, wavelength_nm):
     """n = (Up + Ip)/PhotonEnergy"""
     return (up + ip) / photon_energy(wavelength_nm)
 
+def intensity_from_channel_closure(channel_closure, ip, wavelength_nm):
+    """Calculates the laser intensity from the channel closure
+    Args:
+        channel_closure (float): channel closure
+        ip (float): ionization potential in eV
+        wavelength_nm (float): laser wavelength in nm
+    Returns:
+        float: laser intensity in TW/cm^2
+    """
+    Up = channel_closure * photon_energy(wavelength_nm) - ip
+    return intensity_from_Up(Up, wavelength_nm/1000)
+
+def I_over_the_barrier_ionization(Ip, z=1):
+    """Return Intensity in TW/cm^2
+    Ip: ionization potential in eV
+    """
+    return 4E9 * (Ip**4 / z**2) / 1e12
 
 
 ##### Deprecated #####

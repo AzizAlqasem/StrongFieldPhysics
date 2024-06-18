@@ -7,7 +7,7 @@
     #  python -m pip install -e .
 
 # Version
-VERSION = '0.10.0' # MAJOR.MINOR.PATCH
+VERSION = '0.12.0' # MAJOR.MINOR.PATCH
 
 # Version History:
     # 0.1.0: Initial version (2023-09-27)

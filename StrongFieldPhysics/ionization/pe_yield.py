@@ -9,7 +9,7 @@ from StrongFieldPhysics.time_of_flight.tof_to_energy import t2E, t2E_fixed_bins
 from StrongFieldPhysics.time_of_flight.tof_to_momentum import t2P
 from StrongFieldPhysics.calculations.calculations import up, gamma, photon_energy, channel_closure
 from StrongFieldPhysics.parser.data_files import read_header, remove_empty_lines
-from StrongFieldPhysics.calculations.fourier import fft, filter_signal
+from StrongFieldPhysics.calculations.fourier import fft, filter_signal, correct_phase
 
 # 30 AZIZ
 # 3 LOLO
@@ -78,7 +78,7 @@ class PE_yield:
             self.tof = self.tof - t0
             self.is_tof_corrected = True
 
-    def convert_tof_to_energy(self, normalize=True, method='jacobian', E_max=None, dE=None):
+    def convert_tof_to_energy(self, normalize=True, method='jacobian', E_max=None, dE=None, normalize_method='max'):
         """Convert TOF to Energy
         method: 'jacobian' or 'integration'
         """
@@ -93,7 +93,10 @@ class PE_yield:
         else:
             raise ValueError(f"Unknown method: {method}")
         if normalize:
-            self.yeild_E = self.yeild_E / np.max(self.yeild_E)
+            if normalize_method == 'max':
+                self.yeild_E = self.yeild_E / np.max(self.yeild_E)
+            elif normalize_method == 'mean':
+                self.yeild_E = self.yeild_E / np.mean(self.yeild_E)
         return self.energy, self.yeild_E
 
     def convert_tof_to_momentum(self):
@@ -124,6 +127,54 @@ class PE_yield:
         idx = np.argmin(np.abs(self.freq - freq))
         return self.phase[idx]
 
+    # A method to get T0 and L0 using FFT.
+    ## Summary: Max. amplitude at E=PE should be at the optimum T0 and L0.
+    ## plot ampl(at PE) vs T0 and L0 (2d plot) to find the optimum values.
+    def get_t0_L0(self, t0_range=(-20, 20), L_range=(0.50, 0.55), nop_t0=10, nop_L=10, eng_lim=(3, 10), min_energy=8,\
+                lim_t0l_func=lambda t0, l : True):
+        """Get T0 and L0 using FFT
+        emb_lim: energy limit of the FFT in Up
+        min_energy: minimum energy that a TDC can detect (in eV) for TDC2228A#151ps, it is about 8 eV
+        lim_t0l_func: function to limit the T0 and L0 range, it is useful to spped up the calculation since the range
+        of interest is usually a narrow line with a slop and offset (eg: T0(L) = -116.471L + 48.778) so you guess a function
+        that return true when the T0 and L are between two lines centered around the optimum line.
+        """
+        t0s = np.linspace(*t0_range, nop_t0)
+        Ls = np.linspace(*L_range, nop_L)
+        ampl_2d = np.zeros((nop_t0, nop_L))
+        phase_2d = np.zeros((nop_t0, nop_L))
+        # check min_energy
+        assert((eng_lim[0] * self.Up) > min_energy, f"Minimum energy that a TDC can detect is {min_energy} eV")
+        # Energy bound has to start at n photon energy such that the phase make sense.
+        # Thuse we slightly shift it to the nearest n Photon energy.
+        E1 = np.round((eng_lim[0] * self.Up)/ self.photon_energy) * self.photon_energy
+        E2 = np.round((eng_lim[1] * self.Up)/ self.photon_energy) * self.photon_energy
+        freq0 = 1 / self.photon_energy
+        for i, t0 in enumerate(t0s):
+            for j, L in enumerate(Ls):
+                if lim_t0l_func(t0, L) == False:
+                    ampl_2d[i, j] = np.nan
+                    phase_2d[i, j] = np.nan
+                    continue
+                energy, yield_E = t2E_fixed_bins(self.tof*1e-9 - t0*1e-9, self.count, dE_bin=self.dE, E_max=self.E_max, L=L, t0=0)
+                yld_log_diff = self.calculate_diff_yield(yield_E)
+                idx1 = np.argmin(np.abs(energy - E1))
+                idx2 = np.argmin(np.abs(energy - E2))
+                energy = energy[idx1:idx2]
+                yld_log_diff = yld_log_diff[idx1:idx2]
+                freq, power, phase = fft(yld_log_diff, dt=self.dE, dc_offset=0, auto_remove_dc_offset=True, calc_phase=True)
+                idx = np.argmin(np.abs(freq - freq0))
+                ampl_2d[i, j] = power[idx]
+                phase_2d[i, j] = correct_phase(phase[idx]) / (2*np.pi) # 0 to 1
+        return t0s, Ls, ampl_2d, phase_2d
+
+    def calculate_diff_yield(self, yield_E, window_n_photons=1):
+        n_of_bins_per_photon = self.photon_energy / self.dE
+        window = int(n_of_bins_per_photon * window_n_photons)
+        yld_log = np.log(yield_E)
+        yld_log_avg = np.convolve(yld_log, np.ones(window)/window, mode='same')
+        return yld_log - yld_log_avg
+
     ### Plotting ###
 
     def creat_figure(self, figsize=None, dpi=None, tight_layout=True):
@@ -135,7 +186,7 @@ class PE_yield:
              linestyle='-', color=None, x_type='energy', yscale=None, major_minor_ticks:list=None,\
             show_I=True, show_Up=True, show_wl=False, show_label=True, show_gamma=True,\
                 show_channel_closure=False, show_photon_energy=False, offset_yield=0, auto_ylim=False,\
-                normalize=False, skip_data_step:int=0, plot_type='plot'):
+                normalize=False, skip_data_step:int=0, plot_type='plot', ls2='x'):
         """Plot the yield vs energy, momentum, or time"""
         ax = ax if ax else self.ax
 
@@ -144,6 +195,10 @@ class PE_yield:
             y = self.yeild_E
         elif x_type == 'energy_up':
             x = self.energy/self.Up
+            y = self.yeild_E
+        elif x_type == 'energy_ev_up': # dual x axis
+            x = self.energy
+            x2 = self.energy/self.Up
             y = self.yeild_E
         elif x_type == 'momentum':
             x = self.momentum
@@ -187,7 +242,14 @@ class PE_yield:
             ax2.plot(x, self.phase, label='phase', lw=lw, marker='o', linestyle='', color='k', alpha=0.5)
             ax2.set_ylabel('Phase [rad]', fontsize=10)
             ax2.set_ylim([-np.pi, np.pi])
-
+        if x_type == 'energy_ev_up':
+            ax2 = ax.twiny()
+            ax2.plot(x2, y, label=label, lw=lw, linestyle=ls2)
+            ax2.set_xlabel('Photoelectron Energy [Up]', fontsize=10, fontweight='bold')
+            ax2.xaxis.set_major_locator(MultipleLocator(1))
+            ax2.xaxis.set_minor_locator(MultipleLocator(0.2))
+            if xlim:
+                ax2.set_xlim([xlim[0]/self.Up, xlim[1]/self.Up])
         if xlim:
             ax.set_xlim(xlim)
         if auto_ylim and xlim:
@@ -231,15 +293,19 @@ class PE_yield:
         ax.vlines(up, 0, 1, linestyles=linestyle, color=color, lw=lw, label=label)
 
     def label_plot(self, ax=None, xlabel=None, ylabel=None, title='', x_unit='eV', fontsize=10,\
-                   tfontsize=12, fontweight='bold', show_I=False, show_Up=False,\
-                    show_wl=True, show_photon_energy=False, show_gamma=False, show_Ip=False):
+                   tfontsize=12, fontweight='bold', show_I=False, show_Up=False, fig=None,\
+                    show_wl=True, show_photon_energy=False, show_gamma=False, show_Ip=False, fig_title=False):
         """Label the plot"""
         ax = ax if ax else self.ax
+        fig = fig if fig else self.fig
         xlabel = xlabel if xlabel else f"Photoelectron Energy [{x_unit}]"
         ylabel = ylabel if ylabel else "Relative Yield [a.u.]"
         title = self.gen_label(label=title, show_I=show_I, show_Up=show_Up, show_wl=show_wl,show_label=True,\
                                show_photon_energy=show_photon_energy, show_gamma=show_gamma, show_Ip=show_Ip)
-        ax.set_title(title, fontsize=tfontsize, fontweight='bold')
+        if fig_title:
+            fig.suptitle(title, fontsize=tfontsize, fontweight='bold')
+        else: # axis title
+            ax.set_title(title, fontsize=tfontsize, fontweight='bold')
         ax.set_xlabel(xlabel, fontsize=fontsize, fontweight=fontweight)
         ax.set_ylabel(ylabel, fontsize=fontsize, fontweight=fontweight)
 
@@ -251,7 +317,14 @@ class PE_yield:
         wl_unit = wl_unit if wl_unit else self.wl_unit
         labels = []
         if show_label:
-            labels.append(label)
+            labels.append(str(label))
+        if show_wl:
+            if wl_unit == 'nm':
+                labels.append(f"{round(self.wl,0)} {wl_unit}")
+            elif wl_unit == 'um':
+                labels.append(f"{round(self.wl/1000,2)} {wl_unit}")
+            else:
+                labels.append(f"{self.wl} {wl_unit}")
         if show_I:
             r = 0
             if self.I < 20:
@@ -264,13 +337,6 @@ class PE_yield:
             if self.Up < 5:
                 r = 2
             labels.append(f"Up={round(self.Up,r)} eV")
-        if show_wl:
-            if wl_unit == 'nm':
-                labels.append(f"{round(self.wl,0)} {wl_unit}")
-            elif wl_unit == 'um':
-                labels.append(f"{round(self.wl/1000,2)} {wl_unit}")
-            else:
-                labels.append(f"{self.wl} {wl_unit}")
         if show_t0:
             labels.append(f"t0={self.t0} ns")
         if show_L:
@@ -371,6 +437,11 @@ class PE_yield:
         # save data
         np.savetxt(file_path, data, fmt='%1.6e', delimiter="\t", header="\n".join(header_list))
 
+    ### Utility Functions ###
+    def shift_energy_to_nereast_photon_energy(self, energy):
+        """Shift energy to the nearest n photon energy"""
+        return np.round(energy / self.photon_energy) * self.photon_energy
+
 
 
 
@@ -442,10 +513,10 @@ class PE_yield_collection(PE_yield):
         for i, yield_ in enumerate(self.yields):
             yield_.correct_tof(t0=t0[i])
 
-    def convert_tof_to_energy(self, normalize=True):
+    def convert_tof_to_energy(self, normalize=True, method='jacobian', E_max=None, dE=None, normalize_method='max'):
         """Convert TOF to Energy"""
         for yield_ in self.yields:
-            yield_.convert_tof_to_energy(normalize=normalize)
+            yield_.convert_tof_to_energy(normalize=normalize, method=method, E_max=E_max, dE=dE, normalize_method=normalize_method)
 
     def convert_tof_to_momentum(self):
         """Convert TOF to Momentum"""

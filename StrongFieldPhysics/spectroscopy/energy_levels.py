@@ -104,12 +104,12 @@ def plot_energy_levels(data_dict, species:str, WL, ip=None,  max_labels=10, ytic
 
 
 ##### Test load and parse functions #####
-specie = 'Cs'
-WL = 3.5
+specie = 'Ne'
+WL = 0.5
 data = load_energy_levels(specie, 0)
 data_dict = parse_energy_levels(data, specie)
 # plot_energy_levels2(data_dict, specie, 0.5)
-plot_energy_levels(data_dict, specie, WL=WL, ip=None,  max_labels=10, ytick_minor_f=2, save=False, filename=None)
+plot_energy_levels(data_dict, specie, WL=WL, ip=None,  max_labels=20, ytick_minor_f=2, save=True, filename=None)
 # print(data_dict)
 
 ############### RUN THIS TO DOWNLOAD DATA ################
@@ -125,6 +125,7 @@ plot_energy_levels(data_dict, specie, WL=WL, ip=None,  max_labels=10, ytick_mino
 # download_energy_levels('Ar', 0, save=True)
 # download_energy_levels('Xe', 0, save=True)
 # download_energy_levels('Kr', 0, save=True)
+# download_energy_levels('H', 0, save=True)
 
 
 
