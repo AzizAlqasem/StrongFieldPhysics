@@ -131,25 +131,32 @@ class PE_yield:
     ## Summary: Max. amplitude at E=PE should be at the optimum T0 and L0.
     ## plot ampl(at PE) vs T0 and L0 (2d plot) to find the optimum values.
     def get_t0_L0(self, t0_range=(-20, 20), L_range=(0.50, 0.55), nop_t0=10, nop_L=10, eng_lim=(3, 10), min_energy=8,\
-                lim_t0l_func=lambda t0, l : True):
+                lim_t0l_func=lambda t0, l : True, peak=1, up_unit=True):
         """Get T0 and L0 using FFT
         emb_lim: energy limit of the FFT in Up
         min_energy: minimum energy that a TDC can detect (in eV) for TDC2228A#151ps, it is about 8 eV
         lim_t0l_func: function to limit the T0 and L0 range, it is useful to spped up the calculation since the range
         of interest is usually a narrow line with a slop and offset (eg: T0(L) = -116.471L + 48.778) so you guess a function
         that return true when the T0 and L are between two lines centered around the optimum line.
+        peak: 1 for the first peak (at one photon spacing), 2 for the second peak, etc. of the fourier transform
         """
         t0s = np.linspace(*t0_range, nop_t0)
         Ls = np.linspace(*L_range, nop_L)
         ampl_2d = np.zeros((nop_t0, nop_L))
         phase_2d = np.zeros((nop_t0, nop_L))
         # check min_energy
-        assert((eng_lim[0] * self.Up) > min_energy, f"Minimum energy that a TDC can detect is {min_energy} eV")
+        if up_unit:
+            e1 = eng_lim[0] * self.Up
+            e2 = eng_lim[1] * self.Up
+        else:
+            e1 = eng_lim[0]
+            e2 = eng_lim[1]
+        assert(e1 > min_energy, f"Minimum energy that a TDC can detect is {min_energy} eV")
         # Energy bound has to start at n photon energy such that the phase make sense.
         # Thuse we slightly shift it to the nearest n Photon energy.
-        E1 = np.round((eng_lim[0] * self.Up)/ self.photon_energy) * self.photon_energy
-        E2 = np.round((eng_lim[1] * self.Up)/ self.photon_energy) * self.photon_energy
-        freq0 = 1 / self.photon_energy
+        E1 = np.round(e1/ self.photon_energy) * self.photon_energy
+        E2 = np.round(e2/ self.photon_energy) * self.photon_energy
+        freq0 = 1 / self.photon_energy * peak
         for i, t0 in enumerate(t0s):
             for j, L in enumerate(Ls):
                 if lim_t0l_func(t0, L) == False:
@@ -171,7 +178,7 @@ class PE_yield:
     def calculate_diff_yield(self, yield_E, window_n_photons=1):
         n_of_bins_per_photon = self.photon_energy / self.dE
         window = int(n_of_bins_per_photon * window_n_photons)
-        yld_log = np.log(yield_E)
+        yld_log = np.log10(yield_E)
         yld_log_avg = np.convolve(yld_log, np.ones(window)/window, mode='same')
         return yld_log - yld_log_avg
 

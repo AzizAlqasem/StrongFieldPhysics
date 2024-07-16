@@ -92,7 +92,7 @@ class PE_Envelope:
     def find_atis_scipy(self, E_start=0, E_end=None, E_shift=0, height=None, threshold=None, distance=None, prominence=None, width=None, wlen=None, rel_height=None):
         if E_end is None:
             E_end = self.energy[-1]
-        pe = photon_energy(self.wavelength)
+        # pe = photon_energy(self.wavelength)
         # whithin every photon energy, we have a peak
         self.ati_peaks = []
         limit = (self.energy >= E_start) & (self.energy <= E_end)
@@ -234,12 +234,13 @@ class PE_Envelope:
                     min_peak_i = i
         return self.ati_peaks[min_peak_i]
 
-    def cal_ati_phase(self, first_ati=0, method='relative', mirrors:tuple=None, correction=1.01, mirror:tuple=None):
+    def cal_ati_phase(self, first_ati=0, method='relative', mirrors:tuple=None, correction=1.01, mirror:tuple=None, add_detector_resolution_err=True):
         """ Calculate the phase of the ATI peaks
         phase/photonEnergy = ati_peak_energy / PhotonEnergy - n < 1  , where n is the order of the ATI peak
         method: relative, absolute
         relative: phase is relative to channel closure and the ati comb
         absolute: phase is relative to channel closure
+        eng_bound: (a, b) where a and b are the lower and upper bound of the energy in Up
         """
         self.ati_phase = []
         self.ati_phase_eng = [] #* might be redundant but it is useful to insure it matches the chosen first_ati
@@ -281,7 +282,11 @@ class PE_Envelope:
             else:
                 raise ValueError(f"The type of the mirror should be either -1 or 1. You have entered {typ}")
         self.ati_phase_mean = np.mean(self.ati_phase)
-        self.ati_phase_std = np.std(self.ati_phase)
+        if add_detector_resolution_err:
+            detecor_err = self.dE / self.pe
+            self.ati_phase_std = max(np.std(self.ati_phase), detecor_err)
+        else:
+            self.ati_phase_std = np.std(self.ati_phase)
 
     def estimate_ati_peak_error(self, ati_order, method="std"):
         """Estimate the error in an ATI peak
@@ -315,8 +320,8 @@ class PE_Envelope:
     def calculate_diff_yield(self, window_n_photons=1):
         n_of_bins_per_photon = self.pe / self.dE
         window = int(n_of_bins_per_photon * window_n_photons)
-        yld_log_avg = np.convolve(self.yld_log, np.ones(window)/window, mode='same')
-        self.yld_log_diff = self.yld_log - yld_log_avg
+        self.yld_log_avg = np.convolve(self.yld_log, np.ones(window)/window, mode='same')
+        self.yld_log_diff = self.yld_log - self.yld_log_avg
         return self.yld_log_diff
 
     def calculate_diff_yield_sq(self, offset=0):
@@ -342,22 +347,20 @@ class PE_Envelope:
         if dE is None:
             dE = self.energy[1] - self.energy[0]
         if eng_lim is None:
-            eng_1, eng_2 = (0, 10*self.Up) # assuming eng_type is Up
-            eng_lim = (eng_1, eng_2) # to work with fix_phase
+            eng_1, eng_2 = (0, 10*self.Up) # eV
         else:
-            eng_1, eng_2 = eng_lim
+            eng_1, eng_2 = eng_lim # eV, or convert
             if eng_type == 'Up':
-                eng_1 = eng_1 * self.Up
+                eng_1 = eng_1 * self.Up # to eV
                 eng_2 = eng_2 * self.Up
         if fix_phase:
-            assert(eng_type == 'Up', "Currently 'fix_phase' Only works with energy type = 'Up'")
             # check min_energy
             min_energy = self.energy[0]
-            assert((eng_lim[0] * self.Up) > min_energy, f"Minimum energy that a TDC can detect is {min_energy} eV")
+            assert(eng_1 > min_energy, f"Minimum energy that a TDC can detect is {min_energy} eV")
             # Energy bound has to start at n photon energy such that the phase make sense.
             # Thuse we slightly shift it to the nearest n Photon energy.
-            eng_1 = np.round((eng_lim[0] * self.Up)/ self.pe) * self.pe
-            eng_2 = np.round((eng_lim[1] * self.Up)/ self.pe) * self.pe
+            eng_1 = np.round(eng_1/ self.pe) * self.pe
+            eng_2 = np.round(eng_2/ self.pe) * self.pe
         idx1 = np.argmin(np.abs(self.energy - eng_1))
         idx2 = np.argmin(np.abs(self.energy - eng_2))
         if source == 'yld':
@@ -623,7 +626,8 @@ class PE_Envelope:
 
     def plot_diff_yield(self, ax=None, dpi=180, figsize=(6,4), xlabel='Photoelectron Energy [{}]', ylabel='Differential Yield [a.u.]',\
                         title=None, eng_type='Up', title_extra="", major_minor_ticks=None, ylim=None, xlim=None,\
-                        lw=2, label=None, sep=0, yscale='log', ytype='diff', normalize=False, label_pre='', title_size=12):
+                        lw=2, label=None, sep=0, yscale='log', ytype='diff', normalize=False, label_pre='', title_size=12,
+                        fontsize=12):
         """Plot the difference in the yield
         ytype: diff, diff_sq and diff_sq_avg
         """
@@ -634,8 +638,8 @@ class PE_Envelope:
         if ax is None:
             self.fig_diff, self.ax_diff = plt.subplots(dpi=dpi, figsize=figsize, tight_layout=True)
             ax = self.ax_diff
-            ax.set_xlabel(xlabel.format(eng_type), fontsize=12, weight='bold')
-            ax.set_ylabel(ylabel, fontsize=12, weight='bold')
+            ax.set_xlabel(xlabel.format(eng_type), fontsize=fontsize, weight='bold')
+            ax.set_ylabel(ylabel, fontsize=fontsize, weight='bold')
             ax.set_title(title, fontsize=title_size, weight='bold')
             if major_minor_ticks is None:
                 if eng_type.lower() == 'up':
@@ -738,6 +742,120 @@ class PE_Envelope:
                 label = f'Eng={energy_spacing:.2f}ev | Phase={phase_2pi:.2f}[2$\pi$] | Amp={amp:.2f}'
                 ax.vlines(x=freq, ymin=0, ymax=amp, label=label, linestyle='--', lw=1,) #, color='r')
         return ax
+
+    def plot_fft2(self, ax=None, dpi=180, figsize=(6,4), label=None, xlabel='1/Energy [$eV^{-1}$]', ylabel='DFT Amplitude [a.u.]', title=None,\
+                xlim=None, ylim=None, title_extra="", major_minor_ticks=(0.2, 0.1), lw=2, plot_type='plot', vlcolor='b', stmcolor='b',
+                vlines:list=[], fontsize=12, tfontsize=12, mirror=None, phase_err=None, ntabs=2):
+        # another version of plot_fft
+        """Plot the Fourier Transform of the signal,
+        """
+        if title is None:
+            if self.wavelength > 1000:
+                wll = self.wavelength/1000 # wavelength label
+                wll = f'{wll:.1f}um'
+            else:
+                wll = f'{self.wavelength:.0f}nm'
+            title = f"Fourier Transform of {self.target} Spectrum at {wll}" + title_extra
+        if ax is None:
+            self.fig_fft, self.ax_fft = plt.subplots(dpi=dpi, figsize=figsize, tight_layout=True)
+            ax = self.ax_fft
+            ax.set_xlabel(xlabel, fontsize=fontsize, weight='bold')
+            ax.set_ylabel(ylabel, fontsize=fontsize, weight='bold')
+            ax.set_title(title, fontsize=tfontsize, weight='bold')
+        if label is None:
+            # Find phase
+            # f = 0.85 / self.pe
+            # t = 1.15 / self.pe
+            # idx = find_indx_max_in_yarr_from_xrange(self.fft_freq, self.power_spec, f, t)
+            # phase_2pi = correct_phase(self.fft_phase[idx]) / (2*np.pi)
+            _freq, _energy, phase_2pi, amp = self.fft_freq_phase_extracted_info_list[0]
+            if mirror:
+                p, d = mirror
+                if d < 0 and phase_2pi>p: # mirror toward 0
+                    phase_2pi = 1 - phase_2pi
+                elif d > 0 and phase_2pi<p:
+                    phase_2pi = 1 - phase_2pi
+            # vlin_max = np.real(self.power_spec[idx])
+            # label = f'Phase=({phase_2pi:.2f}$\pm${phase_err:.2f})[2$\pi$] | Amp={amp:.0f}'
+            tabs = '\t' * ntabs
+            label = f'{phase_2pi:.2f} $\pm$ {phase_err:.2f}{tabs}{amp:.0f}'
+            print(round(phase_2pi,3), end=', ') # so I can copy and paste it somewhere else :)
+
+        if plot_type == 'plot':
+            ax.plot(self.fft_freq, self.power_spec, lw=lw, label=label)
+        elif plot_type == 'stem':
+            ax.stem(self.fft_freq, self.power_spec, stmcolor, label=label,)
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+        if major_minor_ticks is not None:
+            major, minor = major_minor_ticks
+            ax.xaxis.set_major_locator(MultipleLocator(major))
+            ax.xaxis.set_minor_locator(MultipleLocator(minor))
+        for vline in vlines:
+            eng, amp, label = vline
+            ax.axvline(eng, 0, amp,  color=vlcolor, linestyle='--', lw=1, label=label)
+        return ax
+
+    def plot_phase_intensity(self, intensity_arr, phase_arr, phase_err_arr, ax=None, dpi=180, figsize=(6,4), xlabel='Intensity [$TW/cm^2$]',\
+                               ylabel='Offset Phase [$2\pi$]', title=None, xlim=(0, 700), ylim=(-0.2, 1.2), title_extra="", major_minor_ticks=(50, 10), \
+                               major_minor_ticks2=(1, 0.5),color='b', marker='o', label=None, fontsize=12, tfontsize=12, x2label='Channel Closure',\
+                                markersize=7, capsize=6,elinewidth=None, capthick=None, n_axis=True, eng_axis=True):
+        # Intensity/channle closure plot
+        output = []
+        if ax is None:
+            fig, ax = plt.subplots(tight_layout=True, dpi=dpi, figsize=figsize)
+            if title is None:
+                if self.wavelength > 1000:
+                    wll = self.wavelength/1000
+                    wll = f'{wll:.1f}um'
+                else:
+                    wll = f'{self.wavelength:.0f}nm'
+                title = f"Offset Phases of {self.target} at {wll}"
+            fig.suptitle(title+title_extra, fontsize=tfontsize, fontweight='bold')
+            ax.set_xlabel(xlabel, fontsize=fontsize, weight='bold')
+            ax.set_ylabel(ylabel, fontsize=fontsize, weight='bold')
+            ax.set_xlim(xlim) # it is good to have a default xlim for the benifit of finding axis2 xlim
+            if ylim is not None:
+                ax.set_ylim(ylim)
+            if major_minor_ticks is not None:
+                major, minor = major_minor_ticks
+                ax.xaxis.set_major_locator(MultipleLocator(major))
+                ax.xaxis.set_minor_locator(MultipleLocator(minor))
+            output.extend([fig, ax])
+            if n_axis:
+                up_arr = ponderomotive_energy(intensity_arr, self.wavelength/1e3)
+                ax2 = ax.twiny()
+                ax2.set_xlabel(x2label, fontsize=fontsize, weight='bold')
+                n_arr = channel_closure(up_arr, self.IP, self.wavelength)
+                ax2.plot(n_arr, phase_arr, alpha=0)
+                # make the ax2 xlim sync with ax1
+                up1 = ponderomotive_energy(xlim[0], self.wavelength/1e3)
+                up2 = ponderomotive_energy(xlim[1], self.wavelength/1e3)
+                n1 = channel_closure(up1, self.IP, self.wavelength)
+                n2 = channel_closure(up2, self.IP, self.wavelength)
+                ax2.set_xlim(n1, n2)
+                if major_minor_ticks2 is not None:
+                    major, minor = major_minor_ticks2
+                    ax2.xaxis.set_major_locator(MultipleLocator(major))
+                    ax2.xaxis.set_minor_locator(MultipleLocator(minor))
+                output.append(ax2)
+            if eng_axis:
+                ax3 = ax.twinx()
+                ax3.set_ylabel('Offset Energy [eV]', fontsize=12, weight='bold')
+                ax3.plot(intensity_arr, phase_arr*self.pe, alpha=0)
+                ax3.set_ylim(ylim[0]*self.pe, ylim[1]*self.pe)
+                _mjt = round(self.pe/5, 1) # major tick
+                _mit = round(_mjt/2, 2) # minor tick
+                ax3.yaxis.set_major_locator(MultipleLocator(_mjt))
+                ax3.yaxis.set_minor_locator(MultipleLocator(_mit))
+                output.append(ax3)
+            # return output
+        ax.errorbar(intensity_arr, phase_arr, yerr=phase_err_arr, fmt=marker, color=color, label=label, \
+                    markersize=markersize, capsize=capsize, elinewidth=elinewidth, capthick=capthick)
+        return output
+
 
     def savefig(self, filename, fig=None, **kwargs):
         if fig is None:

@@ -63,6 +63,41 @@ def I_over_the_barrier_ionization(Ip, z=1):
     return 4E9 * (Ip**4 / z**2) / 1e12
 
 
+def ati_phase(intensity:float, wavelength_nm:float, ip:float): # Test to work fine
+    """ Calculates the ATI Single intensity phase based on Up and Ip
+        Such that Phase = 1 - mod(n),  where n = (Up + Ip)/PhotonEnergy
+    Args:
+        intensity (float): laser intensity in TW/cm^2
+        wavelength_nm (float): laser wavelength in nm
+        ip (float): ionization potential in eV
+    """
+    up = ponderomotive_energy(intensity, wavelength_nm/1000)
+    n = channel_closure(up, ip, wavelength_nm)
+    return 1 - n % 1
+
+# How Many aits can be seen at intensity ater the leading intensity?
+def cutoff_eng_diff(i_peak, i_LI, wavelength_nm):
+    """Calculates the Photoelectron energy difference between the leading and peak intensity.
+    Or the difference between the ATI cutoff energy at the peak and leading intensity.
+    Args:
+        i_peak (float): peak intensity in TW/cm^2
+        i_LI (float): leading intensity in TW/cm^2
+        wavelength_nm (float): laser wavelength in nm
+        ip (float): ionization potential in eV
+    Returns:
+        float: energy difference in eV
+    """
+    up_peak = ponderomotive_energy(i_peak, wavelength_nm/1000)
+    up_LI = ponderomotive_energy(i_LI, wavelength_nm/1000)
+    cutt_off_peak = 10 * up_peak
+    cutt_off_LI = 10 * up_LI
+    diff = cutt_off_peak - cutt_off_LI
+    n_atis = diff / photon_energy(wavelength_nm)
+    relative_up = 10 * up_peak / up_LI
+    return diff, n_atis, relative_up, (cutt_off_peak, cutt_off_LI)
+
+
+
 ##### Deprecated #####
 def up(intensity:float, wavelength:float):#! Deprecated, please use ponderomotive_energy
     """Calculates the ponderomotive energy of a laser pulse
