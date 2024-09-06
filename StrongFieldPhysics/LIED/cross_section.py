@@ -10,7 +10,7 @@ from StrongFieldPhysics.time_of_flight.tof_to_momentum import momentum_au_to_tof
 
 # Load table
 #['born_phase', 'return_phase', 'ke_scatter', 'ke_backscatter', 'a_birth', 'a_scatter', 'p_scatter', 'p_backscatter_0deg']
-search_traj_table = trajectories_search_table(path=r"C:\Users\alqasem.2\OneDrive - The Ohio State University\Strong Field Squad\Alkali Machine and VMI\Code\StrongFieldPhysics\StrongFieldPhysics\classical\LIED_table2.dat") # function
+search_traj_table = trajectories_search_table(path=r"C:\Users\alqasem.2\OneDrive - The Ohio State University\Alkali Machine and VMI\Code\StrongFieldPhysics\StrongFieldPhysics\classical\LIED_table2.dat") # function
 
 
 

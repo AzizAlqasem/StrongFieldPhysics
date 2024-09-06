@@ -32,7 +32,8 @@ def combine_scans(target:str, start_round:int, end_round:int, exclude_rounds:lis
                   last_angle:int, angle_step:int, offset_angle:int = 0, TDC:str = "2228A", \
                 number_of_tdc_bins:int = 2048, save=True, Apply_median_filter = False, median_threshold=30):
     # list all (.csv) files in the current director
-    files = [f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('2228A.csv') and "Round" in f]
+    # files = [f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('2228A.csv') and "Round" in f]
+    files = [f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('2228A.csv') and "Round" in f and not f.startswith('noisy')]
     # Load median data
     if Apply_median_filter:
         angle_arr, median_arr, mean_arr = np.loadtxt('median_TDC2228A.dat').T
@@ -90,7 +91,7 @@ def combine_scans(target:str, start_round:int, end_round:int, exclude_rounds:lis
 
     if save:
         fn = f'{target}_total_spectra'
-        fn2 = f'{target}_average_count'
+        fn2 = f'{target}_averaged_count' # used to be f'{target}_average_count'
         if Apply_median_filter:
             fn += f'_median{int(median_threshold)}'
             fn2 += f'_median{int(median_threshold)}'
@@ -100,6 +101,6 @@ def combine_scans(target:str, start_round:int, end_round:int, exclude_rounds:lis
 
         # Save the angle, averaged count and total laser shots to a file
         scaned_angles = np.arange(first_angle, last_angle+angle_step, angle_step) + offset_angle
-        np.savetxt(f'{fn2}s_TDC2228A.dat', np.c_[scaned_angles, average_count_arr, total_laser_shots_arr], fmt=['%d','%.16f', "%d"], header='Angle | Avg. count | Total Laser shot (k)', delimiter='\t\t')
-
+        np.savetxt(f'{fn2}_TDC2228A.dat', np.c_[scaned_angles, average_count_arr, total_laser_shots_arr], fmt=['%d','%.16f', "%d"], header='Angle | Avg. count | Total Laser shot (k)', delimiter='\t\t')
+        #* it was average_count(s) before Sep 2024
     return total_spectra_arr, average_count_arr, total_laser_shots_arr

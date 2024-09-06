@@ -44,6 +44,18 @@ def channel_closure(up, ip, wavelength_nm):
     """n = (Up + Ip)/PhotonEnergy"""
     return (up + ip) / photon_energy(wavelength_nm)
 
+def up_from_channel_closure(channel_closure, ip, wavelength_nm):
+    """Calculates the ponderomotive energy from the channel closure
+    Args:
+        channel_closure (float): channel closure
+        ip (float): ionization potential in eV
+        wavelength_nm (float): laser wavelength in nm
+    Returns:
+        float: ponderomotive energy in eV
+    """
+    return channel_closure * photon_energy(wavelength_nm) - ip
+
+
 def intensity_from_channel_closure(channel_closure, ip, wavelength_nm):
     """Calculates the laser intensity from the channel closure
     Args:
@@ -53,7 +65,7 @@ def intensity_from_channel_closure(channel_closure, ip, wavelength_nm):
     Returns:
         float: laser intensity in TW/cm^2
     """
-    Up = channel_closure * photon_energy(wavelength_nm) - ip
+    Up = up_from_channel_closure(channel_closure, ip, wavelength_nm)
     return intensity_from_Up(Up, wavelength_nm/1000)
 
 def I_over_the_barrier_ionization(Ip, z=1):
@@ -96,6 +108,27 @@ def cutoff_eng_diff(i_peak, i_LI, wavelength_nm):
     relative_up = 10 * up_peak / up_LI
     return diff, n_atis, relative_up, (cutt_off_peak, cutt_off_LI)
 
+def debroglie_wavelength(energy_eV):
+    """Calculates the debroglie wavelength of a particle with energy in eV
+    Args:
+        energy_eV (float): energy in eV
+    """
+    return 1239.84193 / energy_eV
+
+
+def wavenumber_to_frequency(wavenumber_cm, factor=1e12):
+    # factor = 1e12 for THz
+    # speed of light in cm/s
+    return wavenumber_cm * (C*10) / factor
+
+def frequency_to_wavenumber(frequency_THz):
+    # factor = 1e12 for THz
+    # speed of light in cm/s
+    return (frequency_THz * 1e12) / (C*10)
+
+def wavenumber_to_period(wavenumber_cm):
+    freq_THz = wavenumber_to_frequency(wavenumber_cm)
+    return 1e3 / freq_THz # in fs
 
 
 ##### Deprecated #####

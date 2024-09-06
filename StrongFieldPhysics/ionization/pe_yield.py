@@ -107,6 +107,14 @@ class PE_yield:
         self.momentum, self.yeild_P = t2P(self.tof*1e-9, self.count, L=self.L, t0=0)
         return self.momentum, self.yeild_P
 
+    def load_from_tdse(self, energy, yield_E,  normalize=True, ):
+        """ecf: energy compress factor"""
+        self.energy = energy
+        if normalize:
+            self.yeild_E = yield_E / np.max(yield_E)
+        else:
+            self.yeild_E = yield_E
+
     ### Fourier Transform ###
     def fourier_transform(self, x_type='energy', dt=None, dc_offset=0, auto_remove_dc_offset=True):
         """Fourier transform the signal"""
@@ -338,7 +346,9 @@ class PE_yield:
                 r = 1
             if self.I < 5:
                 r = 2
-            labels.append(f"{round(self.I,r)} $TW/cm^2$")
+            labels.append(f"{self.I:.{r}f} $TW/cm^2$")
+            # labels.append(f"{round(self.I,r)} $TW/cm^2$")
+
         if show_Up:
             r = 1
             if self.Up < 5:
@@ -529,6 +539,7 @@ class PE_yield_collection(PE_yield):
         """Convert TOF to Momentum"""
         for yield_ in self.yields:
             yield_.convert_tof_to_momentum()
+
 
     ### Plotting ###
 

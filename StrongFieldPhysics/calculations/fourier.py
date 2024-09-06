@@ -21,7 +21,7 @@ import numpy as np
 
 
 # Fast Fourier Transform
-def fft(signal_amp, dt, dc_offset=0, auto_remove_dc_offset=False, calc_phase=False, power_spectrum=False):
+def fft(signal_amp, dt, dc_offset=0, auto_remove_dc_offset=False, calc_phase=False, power_spectrum=False, zero_padding=0):
     """Fast Fourier Transform
     signal_amp: signal amplitude (y-axis)
     dt: time step (x-axis)
@@ -30,6 +30,8 @@ def fft(signal_amp, dt, dc_offset=0, auto_remove_dc_offset=False, calc_phase=Fal
         signal_amp = signal_amp - dc_offset
     elif auto_remove_dc_offset:
         signal_amp = signal_amp - np.mean(signal_amp)
+    if zero_padding!=0:
+        signal_amp = np.pad(signal_amp, (zero_padding, zero_padding), 'constant', constant_values=(0, 0))
     N = len(signal_amp)
     # only first half of the spectrum is useful
     N2 = N//2

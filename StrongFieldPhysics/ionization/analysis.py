@@ -17,6 +17,16 @@ def gaussian(x, mean, sigma):
     # sigma = fwhm / 2.35482 #np.sqrt(8*np.log(2))
     return np.exp(-((x - mean) ** 2) / (2 * sigma ** 2)) / (sigma * np.sqrt(2 * np.pi))
 
+def gaussian2(x, mean, sigma, amp): # with amplitude
+    return amp * np.exp(-((x - mean) ** 2) / (2 * sigma ** 2))
+
+def fit_gaussian(x, y, p0=None):
+    popt, pcov = curve_fit(gaussian2, x, y, p0=p0)
+    mean, sigma, amp = popt
+    # calculate error in mean fit
+    mean_err = np.sqrt(pcov[0,0])
+    return mean, sigma, amp, mean_err
+
 # A class that analyze the photoelectron spectra envelope
 class PE_Envelope:
 
@@ -282,11 +292,14 @@ class PE_Envelope:
             else:
                 raise ValueError(f"The type of the mirror should be either -1 or 1. You have entered {typ}")
         self.ati_phase_mean = np.mean(self.ati_phase)
+        std = np.std(self.ati_phase)
         if add_detector_resolution_err:
             detecor_err = self.dE / self.pe
-            self.ati_phase_std = max(np.std(self.ati_phase), detecor_err)
+            if np.isnan(std):
+                std = detecor_err
+            self.ati_phase_std = np.sqrt(std**2 + detecor_err**2)
         else:
-            self.ati_phase_std = np.std(self.ati_phase)
+            self.ati_phase_std = std
 
     def estimate_ati_peak_error(self, ati_order, method="std"):
         """Estimate the error in an ATI peak
@@ -328,15 +341,18 @@ class PE_Envelope:
         self.yld_log_diff_sq = (self.yld_log_diff - offset)*2 # *2 is like squaring because we will have 10**(...) when we plot
         return self.yld_log_diff_sq
 
-    def calculate_diff_yield_sq_avg(self, window_n_photons=2, offset=0):
+    def calculate_diff_yield_sq_avg(self, window_n_photons=2, offset=0, smooth=False):
         n_of_bins_per_photon = self.pe / self.dE
         window = int(n_of_bins_per_photon * window_n_photons)
-        self.yld_log_diff_sq_avg = np.convolve(10**self.yld_log_diff_sq-offset, np.ones(window)/window, mode='same')
+        if smooth:
+            self.yld_log_diff_sq_avg = np.convolve((10**self.yld_log_diff-1)**2, np.ones(window)/window, mode='same')
+        else:
+            self.yld_log_diff_sq_avg = np.convolve(10**self.yld_log_diff_sq-offset, np.ones(window)/window, mode='same')
         return self.yld_log_diff_sq_avg
 
     # Fourier Transform
     def fourier_transform(self, dE=None, dc_offset=0, auto_remove_dc_offset=True, eng_lim:tuple=None, power_spectrum=False, log=True, eng_type='Up',\
-                          extract_info_n_harmonics=0, source='yld', fix_phase=True):
+                          extract_info_n_harmonics=0, source='yld', fix_phase=True, max_diff=0.1):
         """Fourier transform the signal
         extract_info_n_harmonics: extract information about the first n harmonics (frequency or 1/energy)
         the extracted info is: [freq, energy_spacing, phase_2pi, amplitude]
@@ -379,7 +395,7 @@ class PE_Envelope:
                 freq_i = 0.85 * i / self.pe
                 freq_f = 1.15 * i / self.pe
                 # search for the frequency between freq_i and freq_f
-                idx = find_indx_max_in_yarr_from_xrange(self.fft_freq, self.power_spec, freq_i, freq_f)
+                idx = find_indx_max_in_yarr_from_xrange(self.fft_freq, self.power_spec, freq_i, freq_f, max_diff=max_diff)
                 phase_2pi = correct_phase(self.fft_phase[idx]) / (2*np.pi) # from 0 to 1
                 freq = self.fft_freq[idx]
                 energy_spacing = 1/freq
@@ -627,7 +643,7 @@ class PE_Envelope:
     def plot_diff_yield(self, ax=None, dpi=180, figsize=(6,4), xlabel='Photoelectron Energy [{}]', ylabel='Differential Yield [a.u.]',\
                         title=None, eng_type='Up', title_extra="", major_minor_ticks=None, ylim=None, xlim=None,\
                         lw=2, label=None, sep=0, yscale='log', ytype='diff', normalize=False, label_pre='', title_size=12,
-                        fontsize=12):
+                        fontsize=1, color=None, dual_axis=False):
         """Plot the difference in the yield
         ytype: diff, diff_sq and diff_sq_avg
         """
@@ -659,6 +675,14 @@ class PE_Envelope:
             x = self.energy / self.Up
         elif eng_type.lower() == 'ev':
             x = self.energy
+        if dual_axis: # Make top axis as Up
+            x2 = self.energy / self.Up
+            ax2 = ax.twiny()
+            ax2.set_xlabel('Photoelectron Energy [Up]', fontsize=fontsize, weight='bold')
+            ax2.xaxis.set_major_locator(MultipleLocator(1))
+            ax2.xaxis.set_minor_locator(MultipleLocator(0.2))
+            if xlim is not None:
+                ax2.set_xlim(np.array(xlim)/self.Up)
         if ytype == 'diff':
             y = 10**(self.yld_log_diff+sep) if sep != 0 else 10**self.yld_log_diff
         elif ytype == 'diff_sq':
@@ -667,7 +691,10 @@ class PE_Envelope:
             y = self.yld_log_diff_sq_avg + sep if sep != 0 else self.yld_log_diff_sq_avg
         if normalize == True:
             y = y / np.max(y)
-        ax.plot(x, y, lw=lw, label=label_pre + label)
+        ax.plot(x, y, lw=lw, label=label_pre + label, color=color)
+        if dual_axis:
+            ax2.plot(x2, y, alpha=0)
+            return ax, ax2
         return ax
 
     def gen_separate_legend(self, ax, dpi=180, figsize=(6,4), fontsize=9, title_fontsize=12, title=None, savepath=None):
@@ -745,7 +772,7 @@ class PE_Envelope:
 
     def plot_fft2(self, ax=None, dpi=180, figsize=(6,4), label=None, xlabel='1/Energy [$eV^{-1}$]', ylabel='DFT Amplitude [a.u.]', title=None,\
                 xlim=None, ylim=None, title_extra="", major_minor_ticks=(0.2, 0.1), lw=2, plot_type='plot', vlcolor='b', stmcolor='b',
-                vlines:list=[], fontsize=12, tfontsize=12, mirror=None, phase_err=None, ntabs=2):
+                vlines:list=[], fontsize=12, tfontsize=12, mirror=None, phase_err=None, ntabs=2, show_amp=True, pre_label=''):
         # another version of plot_fft
         """Plot the Fourier Transform of the signal,
         """
@@ -777,10 +804,13 @@ class PE_Envelope:
                     phase_2pi = 1 - phase_2pi
             # vlin_max = np.real(self.power_spec[idx])
             # label = f'Phase=({phase_2pi:.2f}$\pm${phase_err:.2f})[2$\pi$] | Amp={amp:.0f}'
-            tabs = '\t' * ntabs
-            label = f'{phase_2pi:.2f} $\pm$ {phase_err:.2f}{tabs}{amp:.0f}'
+            if show_amp:
+                tabs = '\t' * ntabs
+                label = f'{phase_2pi:.2f} $\pm$ {phase_err:.2f}{tabs}{amp:.0f}'
+            else:
+                label = f'{phase_2pi:.2f} $\pm$ {phase_err:.2f}'
             print(round(phase_2pi,3), end=', ') # so I can copy and paste it somewhere else :)
-
+        label = pre_label + label
         if plot_type == 'plot':
             ax.plot(self.fft_freq, self.power_spec, lw=lw, label=label)
         elif plot_type == 'stem':
@@ -798,10 +828,11 @@ class PE_Envelope:
             ax.axvline(eng, 0, amp,  color=vlcolor, linestyle='--', lw=1, label=label)
         return ax
 
-    def plot_phase_intensity(self, intensity_arr, phase_arr, phase_err_arr, ax=None, dpi=180, figsize=(6,4), xlabel='Intensity [$TW/cm^2$]',\
-                               ylabel='Offset Phase [$2\pi$]', title=None, xlim=(0, 700), ylim=(-0.2, 1.2), title_extra="", major_minor_ticks=(50, 10), \
-                               major_minor_ticks2=(1, 0.5),color='b', marker='o', label=None, fontsize=12, tfontsize=12, x2label='Channel Closure',\
-                                markersize=7, capsize=6,elinewidth=None, capthick=None, n_axis=True, eng_axis=True):
+    def plot_phase_intensity(self, intensity_arr, phase_arr, phase_err_arr, intensity_err_arr=None, ax=None, dpi=180, figsize=(6,4),\
+                              xlabel='Intensity [$TW/cm^2$]', ylabel='Offset Phase [$2\pi$]', title=None, xlim=(0, 700), ylim=(-0.2, 1.2),\
+                              title_extra="", major_minor_ticks=(50, 10), x2label='Channel Closure',grid_n=True, y_major_minor_ticks=None,\
+                              major_minor_ticks2=(1, 0.5),color='b', marker='o', label=None, fontsize=12, tfontsize=12, \
+                              markersize=7, capsize=6,elinewidth=None, capthick=None, n_axis=True, eng_axis=True):
         # Intensity/channle closure plot
         output = []
         if ax is None:
@@ -823,6 +854,10 @@ class PE_Envelope:
                 major, minor = major_minor_ticks
                 ax.xaxis.set_major_locator(MultipleLocator(major))
                 ax.xaxis.set_minor_locator(MultipleLocator(minor))
+            if y_major_minor_ticks is not None:
+                major, minor = y_major_minor_ticks
+                ax.yaxis.set_major_locator(MultipleLocator(major))
+                ax.yaxis.set_minor_locator(MultipleLocator(minor))
             output.extend([fig, ax])
             if n_axis:
                 up_arr = ponderomotive_energy(intensity_arr, self.wavelength/1e3)
@@ -840,6 +875,8 @@ class PE_Envelope:
                     major, minor = major_minor_ticks2
                     ax2.xaxis.set_major_locator(MultipleLocator(major))
                     ax2.xaxis.set_minor_locator(MultipleLocator(minor))
+                if grid_n:
+                    ax2.grid(which="minor", axis='x', linestyle='--', linewidth=0.5, alpha=0.5)
                 output.append(ax2)
             if eng_axis:
                 ax3 = ax.twinx()
@@ -852,7 +889,7 @@ class PE_Envelope:
                 ax3.yaxis.set_minor_locator(MultipleLocator(_mit))
                 output.append(ax3)
             # return output
-        ax.errorbar(intensity_arr, phase_arr, yerr=phase_err_arr, fmt=marker, color=color, label=label, \
+        ax.errorbar(intensity_arr, phase_arr, yerr=phase_err_arr, xerr=intensity_err_arr, fmt=marker, color=color, label=label, \
                     markersize=markersize, capsize=capsize, elinewidth=elinewidth, capthick=capthick)
         return output
 
